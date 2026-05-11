@@ -7,7 +7,7 @@ on:
 env:
   REGION: europe-west3
   REGISTRY: europe-west3-docker.pkg.dev
-  IMAGE: europe-west3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/clinicalrag/app
+  REPO: clinicalrag/app
 
 jobs:
   # ── 1. Test ─────────────────────────────────────────────────────────────────
@@ -30,7 +30,6 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v
         env:
-          # Tests mock external services — dummy values satisfy any env checks
           ANTHROPIC_API_KEY: dummy
           OPENAI_API_KEY: dummy
           PINECONE_API_KEY: dummy
@@ -45,10 +44,7 @@ jobs:
 
     permissions:
       contents: read
-      id-token: write        # required for Workload Identity Federation
-
-    outputs:
-      image: ${{ steps.tag.outputs.image }}
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -62,12 +58,10 @@ jobs:
         run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
 
       - name: Build and push
-        id: tag
         run: |
-          IMAGE_TAG="${{ env.IMAGE }}:${{ github.sha }}"
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPO }}:${{ github.sha }}"
           docker build -t "$IMAGE_TAG" .
           docker push "$IMAGE_TAG"
-          echo "image=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
 
   # ── 3. Deploy ────────────────────────────────────────────────────────────────
   deploy:
@@ -86,14 +80,15 @@ jobs:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Deploy
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: clinicalrag-prod
-          region: ${{ env.REGION }}
-          image: ${{ needs.build.outputs.image }}
-          flags: >-
-            --min-instances=0
-            --max-instances=3
-            --memory=1Gi
-            --allow-unauthenticated
-            --update-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,PINECONE_INDEX_NAME=PINECONE_INDEX_NAME:latest,PINECONE_ENVIRONMENT=PINECONE_ENVIRONMENT:latest
+        run: |
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPO }}:${{ github.sha }}"
+          gcloud run deploy clinicalrag-prod \
+            --image "$IMAGE_TAG" \
+            --region "${{ env.REGION }}" \
+            --platform managed \
+            --min-instances 0 \
+            --max-instances 3 \
+            --memory 1Gi \
+            --allow-unauthenticated \
+            --update-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,PINECONE_INDEX_NAME=PINECONE_INDEX_NAME:latest,PINECONE_ENVIRONMENT=PINECONE_ENVIRONMENT:latest \
+            --quiet
