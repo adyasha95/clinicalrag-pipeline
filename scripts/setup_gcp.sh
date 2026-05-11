@@ -67,6 +67,13 @@ else
 fi
 
 # ── 4. Grant IAM roles ────────────────────────────────────────────────────────
+echo "==> Waiting for service account to propagate..."
+for i in {1..10}; do
+  gcloud iam service-accounts describe "$SA_EMAIL" --quiet 2>/dev/null && break
+  echo "    ($i) not ready yet, retrying in 5s..."
+  sleep 5
+done
+
 echo "==> Granting IAM roles..."
 for ROLE in \
   roles/artifactregistry.writer \
@@ -85,10 +92,10 @@ echo "==> Storing secrets in Secret Manager..."
 _upsert_secret() {
   local name="$1" value="$2"
   if gcloud secrets describe "$name" --quiet 2>/dev/null; then
-    echo "$value" | gcloud secrets versions add "$name" --data-file=- --quiet
+    printf '%s' "$value" | gcloud secrets versions add "$name" --data-file=- --quiet
     echo "    Updated $name"
   else
-    echo "$value" | gcloud secrets create "$name" \
+    printf '%s' "$value" | gcloud secrets create "$name" \
       --data-file=- \
       --replication-policy=automatic \
       --quiet

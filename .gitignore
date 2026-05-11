@@ -37,3 +37,7 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# gcloud SDK (downloaded locally, not part of the project)
+google-cloud-sdk/
+google-cloud-cli-*.tar.gz
