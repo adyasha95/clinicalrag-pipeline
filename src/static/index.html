@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClinicalRAG</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1d4ed8;
+      color: white;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; }
+    header p  { font-size: 0.8rem; opacity: 0.8; margin-top: 0.1rem; }
+
+    main {
+      max-width: 860px;
+      margin: 2.5rem auto;
+      padding: 0 1.25rem;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.4rem;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 90px;
+      line-height: 1.5;
+      transition: border-color 0.15s;
+      outline: none;
+    }
+    textarea:focus { border-color: #1d4ed8; }
+
+    .filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    select, input[type="text"] {
+      width: 100%;
+      padding: 0.6rem 0.875rem;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.925rem;
+      font-family: inherit;
+      background: white;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    select:focus, input[type="text"]:focus { border-color: #1d4ed8; }
+
+    button[type="submit"] {
+      margin-top: 1.25rem;
+      width: 100%;
+      padding: 0.8rem;
+      background: #1d4ed8;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    button[type="submit"]:hover:not(:disabled) { background: #1e40af; }
+    button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2.5px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #results { margin-top: 1.75rem; display: none; }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .meta-row h2 { font-size: 0.95rem; font-weight: 700; color: #1e293b; }
+    .latency {
+      font-size: 0.75rem;
+      color: #64748b;
+      background: #f1f5f9;
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+    }
+
+    .answer {
+      font-size: 0.975rem;
+      line-height: 1.75;
+      color: #334155;
+      white-space: pre-wrap;
+    }
+    .answer strong { color: #1e293b; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 1.25rem 0;
+    }
+
+    .sources-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
+
+    .sources-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.625rem;
+    }
+
+    .source-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      display: block;
+    }
+    .source-card:hover {
+      border-color: #1d4ed8;
+      box-shadow: 0 0 0 3px rgba(29,78,216,0.08);
+    }
+    .source-nct {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #1d4ed8;
+      margin-bottom: 0.2rem;
+    }
+    .source-title {
+      font-size: 0.825rem;
+      color: #475569;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .error-box {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      color: #991b1b;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 600px) {
+      .filters { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+  </svg>
+  <div>
+    <h1>ClinicalRAG</h1>
+    <p>AI-powered search over ClinicalTrials.gov records</p>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <form id="queryForm">
+      <label for="question">Your question</label>
+      <textarea
+        id="question"
+        name="question"
+        placeholder="e.g. What are the inclusion criteria for phase 2 schizophrenia trials?"
+        required
+      ></textarea>
+
+      <div class="filters">
+        <div>
+          <label for="phase">Phase filter</label>
+          <select id="phase" name="phase">
+            <option value="">All phases</option>
+            <option value="Phase 1">Phase 1</option>
+            <option value="Phase 2">Phase 2</option>
+            <option value="Phase 3">Phase 3</option>
+            <option value="Phase 4">Phase 4</option>
+          </select>
+        </div>
+        <div>
+          <label for="condition_tag">Condition tag</label>
+          <input
+            type="text"
+            id="condition_tag"
+            name="condition_tag"
+            placeholder="e.g. schizophrenia, depression"
+          />
+        </div>
+      </div>
+
+      <button type="submit" id="submitBtn">
+        <span class="spinner" id="spinner"></span>
+        <span id="btnLabel">Search trials</span>
+      </button>
+    </form>
+  </div>
+
+  <div id="results">
+    <div class="card">
+      <div class="meta-row">
+        <h2>Answer</h2>
+        <span class="latency" id="latency"></span>
+      </div>
+      <div class="answer" id="answerText"></div>
+      <hr class="divider" id="sourcesDivider" />
+      <div id="sourcesSection">
+        <div class="sources-label">Retrieved trials</div>
+        <div class="sources-grid" id="sourcesGrid"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const form      = document.getElementById('queryForm');
+  const btn       = document.getElementById('submitBtn');
+  const spinner   = document.getElementById('spinner');
+  const btnLabel  = document.getElementById('btnLabel');
+  const results   = document.getElementById('results');
+  const answerEl  = document.getElementById('answerText');
+  const latencyEl = document.getElementById('latency');
+  const gridEl    = document.getElementById('sourcesGrid');
+  const divider   = document.getElementById('sourcesDivider');
+  const srcSection= document.getElementById('sourcesSection');
+
+  // Minimal markdown: **bold** and newlines
+  function renderAnswer(text) {
+    return text
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const question     = document.getElementById('question').value.trim();
+    const phase        = document.getElementById('phase').value;
+    const condition_tag= document.getElementById('condition_tag').value.trim();
+
+    if (!question) return;
+
+    // Loading state
+    btn.disabled = true;
+    spinner.style.display = 'block';
+    btnLabel.textContent = 'Searching…';
+    results.style.display = 'none';
+
+    try {
+      const res = await fetch('/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          filters: { phase, condition_tag }
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || 'Request failed');
+      }
+
+      const data = await res.json();
+
+      answerEl.innerHTML = renderAnswer(data.answer);
+      latencyEl.textContent = `${(data.latency_ms / 1000).toFixed(1)}s`;
+
+      gridEl.innerHTML = '';
+      if (data.sources && data.sources.length > 0) {
+        data.sources.forEach(s => {
+          const a = document.createElement('a');
+          a.className = 'source-card';
+          a.href = `https://clinicaltrials.gov/study/${s.nct_id}`;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.innerHTML = `<div class="source-nct">${s.nct_id}</div><div class="source-title">${s.title || '—'}</div>`;
+          gridEl.appendChild(a);
+        });
+        divider.style.display = '';
+        srcSection.style.display = '';
+      } else {
+        divider.style.display = 'none';
+        srcSection.style.display = 'none';
+      }
+
+      results.style.display = 'block';
+      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (err) {
+      results.style.display = 'block';
+      answerEl.innerHTML = `<div class="error-box">${err.message}</div>`;
+      divider.style.display = 'none';
+      srcSection.style.display = 'none';
+      latencyEl.textContent = '';
+    } finally {
+      btn.disabled = false;
+      spinner.style.display = 'none';
+      btnLabel.textContent = 'Search trials';
+    }
+  });
+</script>
+
+</body>
+</html>

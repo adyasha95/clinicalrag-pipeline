@@ -6,10 +6,12 @@ import os
 import time
 from contextlib import asynccontextmanager
 from functools import lru_cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
@@ -179,6 +181,12 @@ def _sources_from_messages(messages: list) -> list[TrialSource]:
                 seen.add(nct_id)
                 sources.append(TrialSource(nct_id=nct_id, title=title))
     return sources
+
+
+# ── Static UI — mounted last so API routes take precedence ────────────────────
+_static_dir = Path(__file__).parent.parent / "static"
+if _static_dir.is_dir():
+    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
 
 
 async def _check_pinecone() -> bool:
