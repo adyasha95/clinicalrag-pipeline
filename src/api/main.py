@@ -17,6 +17,7 @@ load_dotenv()
 
 from src.agent.chain import build_agent, build_qa_chain  # noqa: E402
 from src.api.models import (  # noqa: E402
+    ChatRequest,
     HealthResponse,
     QueryRequest,
     QueryResponse,
@@ -96,6 +97,42 @@ async def query(request: QueryRequest) -> QueryResponse:
     return QueryResponse(answer=answer, sources=sources, latency_ms=latency_ms)
 
 
+@app.post("/chat", response_model=QueryResponse)
+async def chat(request: ChatRequest) -> QueryResponse:
+    """Multi-turn chat over clinical trial records.
+
+    Accepts the full conversation history and returns the next assistant turn.
+    Filters are applied to every retrieval call throughout the conversation.
+    """
+    t0 = time.monotonic()
+    filters = request.filters
+
+    # Build the message list for the agent.
+    messages = [{"role": m.role, "content": m.content} for m in request.messages]
+
+    # Append filter hint to the last user message when filters are active.
+    if filters.phase or filters.condition_tag:
+        hint_parts = []
+        if filters.phase:
+            hint_parts.append(f"phase: {filters.phase}")
+        if filters.condition_tag:
+            hint_parts.append(f"condition: {filters.condition_tag}")
+        hint = ", ".join(hint_parts)
+        for msg in reversed(messages):
+            if msg["role"] == "user":
+                msg["content"] = f"{msg['content']} [{hint}]"
+                break
+
+    try:
+        answer, sources = await _run_agent_messages(messages)
+    except Exception as exc:
+        logger.exception("Error processing chat")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    return QueryResponse(answer=answer, sources=sources, latency_ms=latency_ms)
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     """Liveness + readiness check. Pings Pinecone to verify connectivity."""
@@ -114,6 +151,21 @@ async def _run_qa_chain(question: str) -> tuple[str, list[TrialSource]]:
     )
     answer: str = result.get("answer", "")
     sources = _sources_from_docs(result.get("source_documents", []))
+    return answer, sources
+
+
+async def _run_agent_messages(
+    messages: list[dict],
+) -> tuple[str, list[TrialSource]]:
+    """Run the LangGraph agent with an arbitrary message history."""
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: _agent().invoke({"messages": messages}),
+    )
+    msgs = result.get("messages", [])
+    answer = msgs[-1].content if msgs else ""
+    sources = _sources_from_messages(msgs)
     return answer, sources
 
 

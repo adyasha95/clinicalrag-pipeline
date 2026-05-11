@@ -1,5 +1,7 @@
 """Pydantic request and response models for the ClinicalRAG API."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -45,3 +47,20 @@ class QueryResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str = Field(description="Always 'ok' when the API is reachable.")
     pinecone_connected: bool = Field(description="Whether Pinecone index is reachable.")
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"] = Field(description="Message author.")
+    content: str = Field(description="Message text.")
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage] = Field(
+        ...,
+        min_length=1,
+        description="Full conversation history, ending with the latest user message.",
+    )
+    filters: QueryFilters = Field(
+        default_factory=QueryFilters,
+        description="Optional metadata filters applied to every retrieval turn.",
+    )
